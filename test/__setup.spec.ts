@@ -52,6 +52,8 @@ import {
   CollectNFT,
   RevertFollowModule,
   RevertFollowModule__factory,
+  ReferenceSeedModule,
+  ReferenceSeedModule__factory,
 } from '../typechain-types';
 import { LensHubLibraryAddresses } from '../typechain-types/factories/LensHub__factory';
 import { FAKE_PRIVATEKEY, ZERO_ADDRESS } from './helpers/constants';
@@ -69,6 +71,7 @@ export const BPS_MAX = 10000;
 export const TREASURY_FEE_BPS = 50;
 export const REFERRAL_FEE_BPS = 250;
 export const MAX_PROFILE_IMAGE_URI_LENGTH = 6000;
+export const SEED_PAYMENT_AMOUNT = 100;
 export const LENS_HUB_NFT_NAME = 'Lens Protocol Profiles';
 export const LENS_HUB_NFT_SYMBOL = 'LPP';
 export const MOCK_PROFILE_HANDLE = 'plant1ghost.eth';
@@ -87,11 +90,15 @@ export let user: Signer;
 export let userTwo: Signer;
 export let userThree: Signer;
 export let governance: Signer;
+export let relayer: Signer;
+export let admin: Signer;
 export let deployerAddress: string;
 export let userAddress: string;
 export let userTwoAddress: string;
 export let userThreeAddress: string;
 export let governanceAddress: string;
+export let relayerAddress: string;
+export let adminAddress: string;
 export let treasuryAddress: string;
 export let testWallet: Wallet;
 export let lensHubImpl: LensHub;
@@ -127,6 +134,7 @@ export let mockFollowModule: MockFollowModule;
 // Reference
 export let followerOnlyReferenceModule: FollowerOnlyReferenceModule;
 export let mockReferenceModule: MockReferenceModule;
+export let referenceSeedModule: ReferenceSeedModule;
 
 export function makeSuiteCleanRoom(name: string, tests: () => void) {
   describe(name, () => {
@@ -149,12 +157,16 @@ before(async function () {
   userTwo = accounts[2];
   userThree = accounts[4];
   governance = accounts[3];
+  relayer = accounts[5];
+  admin = accounts[6];
 
   deployerAddress = await deployer.getAddress();
   userAddress = await user.getAddress();
   userTwoAddress = await userTwo.getAddress();
   userThreeAddress = await userThree.getAddress();
   governanceAddress = await governance.getAddress();
+  relayerAddress = await relayer.getAddress();
+  adminAddress = await admin.getAddress();
   treasuryAddress = await accounts[4].getAddress();
   mockModuleData = abiCoder.encode(['uint256'], [1]);
   // Deployment
@@ -191,12 +203,12 @@ before(async function () {
     collectNFTImpl.address
   );
 
-  let data = lensHubImpl.interface.encodeFunctionData('initialize', [
+  const data = lensHubImpl.interface.encodeFunctionData('initialize', [
     LENS_HUB_NFT_NAME,
     LENS_HUB_NFT_SYMBOL,
     governanceAddress,
   ]);
-  let proxy = await new TransparentUpgradeableProxy__factory(deployer).deploy(
+  const proxy = await new TransparentUpgradeableProxy__factory(deployer).deploy(
     lensHubImpl.address,
     deployerAddress,
     data
@@ -241,6 +253,13 @@ before(async function () {
   revertFollowModule = await new RevertFollowModule__factory(deployer).deploy(lensHub.address);
   followerOnlyReferenceModule = await new FollowerOnlyReferenceModule__factory(deployer).deploy(
     lensHub.address
+  );
+  referenceSeedModule = await new ReferenceSeedModule__factory(deployer).deploy(
+    lensHub.address,
+    currency.address,
+    SEED_PAYMENT_AMOUNT,
+    relayerAddress,
+    adminAddress
   );
 
   mockFollowModule = await new MockFollowModule__factory(deployer).deploy();

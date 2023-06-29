@@ -4,7 +4,6 @@ import fs from 'fs';
 import { task } from 'hardhat/config';
 import {
   LensHub__factory,
-  ApprovalFollowModule__factory,
   CollectNFT__factory,
   Currency__factory,
   FreeCollectModule__factory,
@@ -26,6 +25,7 @@ import {
   ProfileFollowModule__factory,
   RevertFollowModule__factory,
   ProfileCreationProxy__factory,
+  ReferenceSeedModule__factory,
 } from '../typechain-types';
 import { deployContract, waitForTx } from './helpers/utils';
 
@@ -33,7 +33,7 @@ const TREASURY_FEE_BPS = 50;
 const LENS_HUB_NFT_NAME = 'Lens Protocol Profiles';
 const LENS_HUB_NFT_SYMBOL = 'LPP';
 
-task('full-deploy', 'deploys the entire Lens Protocol').setAction(async ({}, hre) => {
+task('full-deploy', 'deploys the entire Lens Protocol').setAction(async (_, hre) => {
   // Note that the use of these signers is a placeholder and is not meant to be used in
   // production.
   const ethers = hre.ethers;
@@ -43,6 +43,8 @@ task('full-deploy', 'deploys the entire Lens Protocol').setAction(async ({}, hre
   const treasuryAddress = accounts[2].address;
   const proxyAdminAddress = deployer.address;
   const profileCreatorAddress = deployer.address;
+  const relayerAddress = accounts[4].address;
+  const adminAddress = accounts[5].address;
 
   // Nonce management in case of deployment issues
   let deployerNonce = await ethers.provider.getTransactionCount(deployer.address);
@@ -106,14 +108,14 @@ task('full-deploy', 'deploys the entire Lens Protocol').setAction(async ({}, hre
     new CollectNFT__factory(deployer).deploy(hubProxyAddress, { nonce: deployerNonce++ })
   );
 
-  let data = lensHubImpl.interface.encodeFunctionData('initialize', [
+  const data = lensHubImpl.interface.encodeFunctionData('initialize', [
     LENS_HUB_NFT_NAME,
     LENS_HUB_NFT_SYMBOL,
     governance.address,
   ]);
 
   console.log('\n\t-- Deploying Hub Proxy --');
-  let proxy = await deployContract(
+  const proxy = await deployContract(
     new TransparentUpgradeableProxy__factory(deployer).deploy(
       lensHubImpl.address,
       proxyAdminAddress,
@@ -206,6 +208,18 @@ task('full-deploy', 'deploys the entire Lens Protocol').setAction(async ({}, hre
     })
   );
 
+  //
+  console.log('\n\t-- Deploying Seed Module --');
+  const referenceSeedModule = await deployContract(
+    new ReferenceSeedModule__factory(governance).deploy(
+      lensHub.address,
+      currency.address,
+      100,
+      relayerAddress,
+      adminAddress
+    )
+  );
+
   // Deploy UIDataProvider
   console.log('\n\t-- Deploying UI Data Provider --');
   const uiDataProvider = await deployContract(
@@ -273,6 +287,14 @@ task('full-deploy', 'deploys the entire Lens Protocol').setAction(async ({}, hre
     })
   );
 
+  // Whitelist the seed module
+  console.log('\n\t-- Whitelisting Seed Module --');
+  await waitForTx(
+    lensHub.whitelistReferenceModule(referenceSeedModule.address, true, {
+      nonce: governanceNonce++,
+    })
+  );
+
   // Whitelist the currency
   console.log('\n\t-- Whitelisting Currency in Module Globals --');
   await waitForTx(
@@ -311,6 +333,7 @@ task('full-deploy', 'deploys the entire Lens Protocol').setAction(async ({}, hre
     'revert follow module': revertFollowModule.address,
     // --- COMMENTED OUT AS THIS IS NOT A LAUNCH MODULE ---
     // 'approval follow module': approvalFollowModule.address,
+    'seed module': referenceSeedModule.address,
     'follower only reference module': followerOnlyReferenceModule.address,
     'UI data provider': uiDataProvider.address,
     'Profile creation proxy': profileCreationProxy.address,
